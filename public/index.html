@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TikTok Live Text-to-Speech (TTS) - OBS Studio</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            tiktok: {
+              red: '#fe2c55',
+              cyan: '#25f4ee',
+              dark: '#0f0f13',
+              card: '#181820',
+              border: '#2a2a38'
+            }
+          },
+          animation: {
+            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'bounce-slow': 'bounce 2s infinite',
+            'wave': 'wave 1.2s ease-in-out infinite'
+          },
+          keyframes: {
+            wave: {
+              '0%, 100%': { height: '8px' },
+              '50%': { height: '24px' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Font Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* Custom Scrollbar for OBS */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #121218;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2e2e3d;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #fe2c55;
+    }
+  </style>
+  <!-- Socket.io Client -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body class="bg-[#0b0b0f] text-gray-100 min-h-screen flex flex-col transition-colors duration-300">
+
+  <!-- Header / Navigation -->
+  <header class="bg-[#12121a] border-b border-[#222230] px-4 py-3 sticky top-0 z-30 shadow-lg">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-[#fe2c55] to-[#25f4ee] p-0.5 shadow-md">
+          <div class="w-full h-full bg-[#12121a] rounded-[10px] flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 003 15.68 6.34 6.34 0 009.67 22c3.5 0 6.33-2.83 6.33-6.33V9.05a8.16 8.16 0 004.8 1.56V7.16a4.85 4.85 0 01-1.21-.47z"/>
+            </svg>
+          </div>
+        </div>
+        <div>
+          <h1 class="text-base font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gray-400">
+            TikTok Live TTS
+          </h1>
+          <p class="text-xs text-gray-400">Đọc bình luận & follow bằng giọng nói AI cho OBS Studio</p>
+        </div>
+      </div>
+
+      <!-- Mode Toggle & Status Indicator -->
+      <div class="flex items-center gap-2">
+        <button id="btnToggleOverlayMode" onclick="toggleOverlayMode()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#222230] hover:bg-[#2e2e42] border border-[#333346] text-cyan-400 transition flex items-center gap-1.5 shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+          </svg>
+          <span>Chế độ OBS Overlay</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+    <!-- Left Column: Settings & Controls (Width: 4/12 on large screens) -->
+    <section id="panelControls" class="lg:col-span-5 space-y-4">
+
+      <!-- TikTok Connection Card -->
+      <div class="bg-[#161622] rounded-2xl p-4 border border-[#262638] shadow-xl">
+        <h2 class="text-sm font-bold text-gray-200 flex items-center gap-2 mb-3">
+          <span class="w-2 h-2 rounded-full bg-tiktok-red"></span>
+          Kết nối TikTok Live
+        </h2>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1 font-medium">TikTok Unique ID (Ví dụ: @phongstream, tuangaming)</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500 font-bold text-sm">@</span>
+              <input type="text" id="tiktokIdInput" placeholder="nhap_tiktok_id" class="w-full pl-8 pr-3 py-2 bg-[#0d0d14] border border-[#2e2e42] rounded-xl text-sm font-medium text-white focus:outline-none focus:border-tiktok-red transition">
+            </div>
+          </div>
+
+          <div class="flex gap-2">
+            <button id="btnConnect" onclick="connectTikTok()" class="flex-1 py-2.5 px-4 bg-gradient-to-r from-[#fe2c55] to-[#e01e45] hover:from-[#e01e45] hover:to-[#c81439] text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-tiktok-red/20 active:scale-95 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+              </svg>
+              <span>Kết nối Live</span>
+            </button>
+            <button id="btnDisconnect" onclick="disconnectTikTok()" disabled class="py-2.5 px-4 bg-[#20202e] hover:bg-[#2a2a3d] disabled:opacity-50 text-gray-300 font-semibold rounded-xl text-sm transition border border-[#2e2e42]">
+              Ngắt
+            </button>
+          </div>
+
+          <!-- Status Box -->
+          <div id="statusBox" class="p-3 rounded-xl bg-[#0e0e16] border border-[#222232] text-xs flex items-center gap-2.5">
+            <div id="statusDot" class="w-3 h-3 rounded-full bg-gray-500 flex-shrink-0"></div>
+            <span id="statusText" class="text-gray-400 font-medium">Chưa kết nối TikTok Live</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TTS Configuration Card -->
+      <div class="bg-[#161622] rounded-2xl p-4 border border-[#262638] shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-[#242436] pb-2">
+          <h2 class="text-sm font-bold text-gray-200 flex items-center gap-2">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+            </svg>
+            Cấu hình Giọng nói AI (TTS)
+          </h2>
+          <span id="queueBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#242436] text-cyan-400 border border-[#32324a]">
+            Hàng đợi: 0
+          </span>
+        </div>
+
+        <!-- Engine Select -->
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-gray-400 mb-1 font-medium">Công nghệ Đọc (TTS Engine)</label>
+            <select id="ttsEngineSelect" onchange="handleEngineChange()" class="w-full px-3 py-2 bg-[#0d0d14] border border-[#2e2e42] rounded-xl text-sm font-medium text-white focus:outline-none focus:border-cyan-400 transition">
+              <option value="webspeech">Web Speech API (Miễn phí - Sẵn trong trình duyệt)</option>
+              <option value="custom_api">Custom TTS API (Google / FPT / Viettel / Custom URL)</option>
+            </select>
+          </div>
+
+          <!-- Web Speech Voice Selector -->
+          <div id="webSpeechVoiceGroup">
+            <label class="block text-xs text-gray-400 mb-1 font-medium">Chọn Giọng Đọc Trình Duyệt</label>
+            <select id="voiceSelect" class="w-full px-3 py-2 bg-[#0d0d14] border border-[#2e2e42] rounded-xl text-sm font-medium text-white focus:outline-none focus:border-cyan-400 transition">
+              <option value="">Đang tải giọng nói...</option>
+            </select>
+          </div>
+
+          <!-- Custom API Configuration (Hidden by default) -->
+          <div id="customApiGroup" class="hidden space-y-2 p-3 rounded-xl bg-[#0d0d14] border border-[#242436]">
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">API Endpoint URL (Trả về file audio/mp3)</label>
+              <input type="text" id="customApiUrl" placeholder="https://api.example.com/tts?text={text}&key={key}" class="w-full px-3 py-1.5 bg-[#14141f] border border-[#2e2e42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-400 mb-1">API Key (Tùy chọn)</label>
+              <input type="password" id="customApiKey" placeholder="Nhập API Key của bạn" class="w-full px-3 py-1.5 bg-[#14141f] border border-[#2e2e42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400">
+            </div>
+            <p class="text-[11px] text-gray-500 italic">Hệ thống sẽ thay thế <code>{text}</code> bằng nội dung cần đọc và <code>{key}</code> bằng API Key.</p>
+          </div>
+
+          <!-- Voice Modifiers -->
+          <div class="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <div class="flex justify-between text-xs text-gray-400 mb-1 font-medium">
+                <span>Tốc độ đọc</span>
+                <span id="rateValue" class="text-cyan-400">1.0x</span>
+              </div>
+              <input type="range" id="rateRange" min="0.5" max="2" step="0.1" value="1.0" oninput="document.getElementById('rateValue').textContent = parseFloat(this.value).toFixed(1) + 'x'" class="w-full accent-cyan-400 cursor-pointer">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs text-gray-400 mb-1 font-medium">
+                <span>Âm lượng</span>
+                <span id="volumeValue" class="text-cyan-400">100%</span>
+              </div>
+              <input type="range" id="volumeRange" min="0" max="1" step="0.1" value="1.0" oninput="document.getElementById('volumeValue').textContent = Math.round(this.value * 100) + '%'" class="w-full accent-cyan-400 cursor-pointer">
+            </div>
+          </div>
+        </div>
+
+        <!-- Event Filter Switches -->
+        <div class="space-y-2 border-t border-[#242436] pt-3">
+          <label class="block text-xs font-bold text-gray-300">Bộ Lọc Sự Kiện Đọc giọng nói</label>
+
+          <div class="grid grid-cols-3 gap-2">
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-[#0d0d14] border border-[#242436] cursor-pointer hover:border-[#383852] transition">
+              <input type="checkbox" id="chkChat" checked class="w-4 h-4 rounded accent-tiktok-red bg-[#1a1a26]">
+              <span class="text-xs font-medium text-gray-200">Bình luận</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-[#0d0d14] border border-[#242436] cursor-pointer hover:border-[#383852] transition">
+              <input type="checkbox" id="chkFollow" checked class="w-4 h-4 rounded accent-cyan-400 bg-[#1a1a26]">
+              <span class="text-xs font-medium text-gray-200">Follow</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-[#0d0d14] border border-[#242436] cursor-pointer hover:border-[#383852] transition">
+              <input type="checkbox" id="chkGift" checked class="w-4 h-4 rounded accent-yellow-400 bg-[#1a1a26]">
+              <span class="text-xs font-medium text-gray-200">Tặng quà</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Queue Actions -->
+        <div class="flex gap-2 border-t border-[#242436] pt-3">
+          <button onclick="audioQueue.clearQueue()" class="flex-1 py-2 px-3 bg-[#222232] hover:bg-[#2d2d42] text-xs font-semibold rounded-xl text-gray-300 transition flex items-center justify-center gap-1.5 border border-[#303046]">
+            <svg class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+            </svg>
+            Xóa Hàng Đợi
+          </button>
+          <button onclick="testSpeech()" class="flex-1 py-2 px-3 bg-[#1e293b] hover:bg-[#334155] text-xs font-semibold rounded-xl text-cyan-300 transition flex items-center justify-center gap-1.5 border border-[#334155]">
+            <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Đọc Thử Nghiệm
+          </button>
+        </div>
+      </div>
+
+      <!-- Simulation Panel for Easy Testing -->
+      <div class="bg-[#161622] rounded-2xl p-4 border border-[#262638] shadow-xl">
+        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+          <span>Giả lập sự kiện (Thử nghiệm OBS)</span>
+          <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-md font-semibold">Test Mode</span>
+        </h2>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="simulateEvent('chat')" class="py-2 px-3 bg-[#1e1a26] hover:bg-[#2b2438] text-xs font-medium text-pink-300 rounded-xl border border-pink-900/40 transition">
+            + Thử Bình Luận
+          </button>
+          <button onclick="simulateEvent('follow')" class="py-2 px-3 bg-[#18262a] hover:bg-[#21373d] text-xs font-medium text-cyan-300 rounded-xl border border-cyan-900/40 transition">
+            + Thử Follow
+          </button>
+          <button onclick="simulateEvent('gift')" class="py-2 px-3 bg-[#282418] hover:bg-[#383321] text-xs font-medium text-amber-300 rounded-xl border border-amber-900/40 transition">
+            + Thử Tặng Quà
+          </button>
+          <button onclick="simulateSpamEvents()" class="py-2 px-3 bg-[#241a2e] hover:bg-[#342444] text-xs font-semibold text-purple-300 rounded-xl border border-purple-900/40 transition">
+            🔥 Thử Dồn 5 Câu
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right Column: Active Speaker Banner & Live Events Stream (Width: 7/12 on large screens) -->
+    <section id="panelStream" class="lg:col-span-7 flex flex-col gap-4">
+
+      <!-- Active Speaker Visualizer Card -->
+      <div id="speakerCard" class="bg-[#161622] rounded-2xl p-4 border border-[#262638] shadow-xl transition-all duration-300 relative overflow-hidden">
+        <!-- Background Glow when speaking -->
+        <div id="speakerGlow" class="absolute inset-0 bg-gradient-to-r from-tiktok-red/10 via-cyan-500/10 to-tiktok-red/10 opacity-0 transition-opacity duration-300 pointer-events-none"></div>
+
+        <div class="relative z-10 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div id="avatarRing" class="relative w-12 h-12 rounded-full bg-[#20202e] border-2 border-[#32324a] flex items-center justify-center transition-all duration-300">
+              <svg id="speakerIcon" class="w-6 h-6 text-gray-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+              </svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span id="speakerStateBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#222232] text-gray-400 uppercase tracking-wider">
+                  Sẵn sàng
+                </span>
+                <span id="speakerName" class="text-xs font-bold text-gray-300">AI TTS Engine</span>
+              </div>
+              <p id="speakerText" class="text-sm font-medium text-gray-100 line-clamp-2 mt-0.5 italic">
+                "Đang chờ sự kiện mới từ livestream..."
+              </p>
+            </div>
+          </div>
+
+          <!-- Animated Waveform Bars -->
+          <div id="waveform" class="flex items-center gap-1 opacity-30 transition-opacity duration-300">
+            <span class="w-1 bg-cyan-400 rounded-full h-3 animate-wave" style="animation-delay: 0.1s"></span>
+            <span class="w-1 bg-tiktok-red rounded-full h-5 animate-wave" style="animation-delay: 0.3s"></span>
+            <span class="w-1 bg-cyan-400 rounded-full h-7 animate-wave" style="animation-delay: 0.2s"></span>
+            <span class="w-1 bg-tiktok-red rounded-full h-4 animate-wave" style="animation-delay: 0.4s"></span>
+            <span class="w-1 bg-cyan-400 rounded-full h-2 animate-wave" style="animation-delay: 0.15s"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Events Stream Box -->
+      <div class="bg-[#161622] rounded-2xl p-4 border border-[#262638] shadow-xl flex-1 flex flex-col min-h-[420px]">
+        <div class="flex items-center justify-between border-b border-[#242436] pb-3 mb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h2 class="text-sm font-bold text-gray-200">Luồng Sự Kiện Thời Gian Thực</h2>
+          </div>
+          <div class="flex items-center gap-3 text-xs text-gray-400 font-medium">
+            <span id="eventCounter" class="bg-[#20202e] px-2.5 py-1 rounded-lg border border-[#2e2e42]">0 sự kiện</span>
+            <button onclick="clearEventLogs()" class="hover:text-red-400 transition">Xóa nhật ký</button>
+          </div>
+        </div>
+
+        <!-- Event List Scroll Container -->
+        <div id="eventLog" class="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[500px]">
+          <!-- Placeholder state -->
+          <div id="emptyPlaceholder" class="h-full min-h-[280px] flex flex-col items-center justify-center text-center p-6 text-gray-500 border-2 border-dashed border-[#222234] rounded-xl">
+            <svg class="w-12 h-12 mb-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+            </svg>
+            <p class="text-sm font-medium text-gray-400">Chưa có bình luận hoặc follow nào</p>
+            <p class="text-xs text-gray-500 mt-1">Hãy nhập TikTok ID và nhấn "Kết nối Live" hoặc chọn nút "Giả lập sự kiện" ở bên trái để test!</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- OBS Overlay Minimal Floating Widget (Shown ONLY in Overlay Mode) -->
+  <div id="obsOverlayContainer" class="hidden fixed inset-0 bg-transparent p-6 z-50 flex flex-col justify-end pointer-events-none">
+    <div id="obsSpeechCard" class="max-w-lg bg-[#0e0e16]/95 backdrop-blur-md border-2 border-[#2b2b3e] rounded-2xl p-4 shadow-2xl transition-all duration-300 opacity-0 transform translate-y-4">
+      <div class="flex items-center gap-3">
+        <div id="obsAvatar" class="w-12 h-12 rounded-full bg-gradient-to-tr from-[#fe2c55] to-[#25f4ee] p-0.5 flex-shrink-0">
+          <div class="w-full h-full bg-[#0e0e16] rounded-full flex items-center justify-center font-bold text-white text-sm">
+            AI
+          </div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span id="obsBadge" class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-[#fe2c55] text-white uppercase tracking-wider">
+              BÌNH LUẬN
+            </span>
+            <span id="obsUser" class="text-xs font-bold text-cyan-300 truncate">Nguyễn Văn A</span>
+          </div>
+          <p id="obsText" class="text-sm font-semibold text-white mt-1 leading-snug drop-shadow-sm">
+            Đang chờ livestream...
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Application JavaScript Logic -->
+  <script>
+    // Global State & Socket Initialization
+    const socket = io();
+    let isOverlayMode = false;
+    let eventCount = 0;
+
+    // AUDIO QUEUE CLASS (RẤT QUAN TRỌNG: Đảm bảo âm thanh phát tuần tự, không phát đè lên nhau)
+    class AudioQueue {
+      constructor() {
+        this.queue = [];
+        this.isSpeaking = false;
+        this.currentAudio = null;
+      }
+
+      // Đưa sự kiện vào hàng đợi
+      enqueue(item) {
+        // Kiểm tra bộ lọc sự kiện
+        const chkChat = document.getElementById('chkChat').checked;
+        const chkFollow = document.getElementById('chkFollow').checked;
+        const chkGift = document.getElementById('chkGift').checked;
+
+        if (item.type === 'chat' && !chkChat) return;
+        if (item.type === 'follow' && !chkFollow) return;
+        if (item.type === 'gift' && !chkGift) return;
+
+        // Giới hạn hàng đợi tối đa 40 câu để tránh bị nghẽn đè khi livestream có lượng tương tác quá lớn
+        if (this.queue.length > 40) {
+          this.queue.shift(); // Xóa câu cũ nhất
+        }
+
+        this.queue.push(item);
+        this.updateQueueBadge();
+        this.processQueue();
+      }
+
+      // Xóa toàn bộ hàng đợi
+      clearQueue() {
+        this.queue = [];
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+        }
+        if (this.currentAudio) {
+          this.currentAudio.pause();
+          this.currentAudio = null;
+        }
+        this.isSpeaking = false;
+        this.updateQueueBadge();
+        setSpeakerActiveState(false);
+      }
+
+      updateQueueBadge() {
+        const badge = document.getElementById('queueBadge');
+        if (badge) {
+          badge.textContent = `Hàng đợi: ${this.queue.length}`;
+        }
+      }
+
+      // Xử lý đọc lần lượt từng mục trong queue
+      async processQueue() {
+        if (this.isSpeaking || this.queue.length === 0) {
+          return;
+        }
+
+        this.isSpeaking = true;
+        const item = this.queue.shift();
+        this.updateQueueBadge();
+
+        // Cập nhật giao diện người đang nói
+        setSpeakerActiveState(true, item);
+
+        const onEnded = () => {
+          this.isSpeaking = false;
+          setSpeakerActiveState(false);
+          // Tiến hành đọc câu tiếp theo
+          setTimeout(() => this.processQueue(), 250);
+        };
+
+        const onError = (err) => {
+          console.warn('[TTS Error]', err);
+          this.isSpeaking = false;
+          setSpeakerActiveState(false);
+          setTimeout(() => this.processQueue(), 250);
+        };
+
+        const engine = document.getElementById('ttsEngineSelect').value;
+
+        if (engine === 'webspeech') {
+          this.speakWebSpeech(item.formattedText, onEnded, onError);
+        } else {
+          this.speakCustomApi(item.formattedText, onEnded, onError);
+        }
+      }
+
+      // 1. Phân nhánh phát âm bằng Web Speech API
+      speakWebSpeech(text, onEnded, onError) {
+        if (!('speechSynthesis' in window)) {
+          alert('Trình duyệt của bạn không hỗ trợ Web Speech API!');
+          onError('Not supported');
+          return;
+        }
+
+        // Hủy bất kỳ phát thanh cũ bị treo
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        const rate = parseFloat(document.getElementById('rateRange').value) || 1.0;
+        const volume = parseFloat(document.getElementById('volumeRange').value) || 1.0;
+
+        utterance.rate = rate;
+        utterance.volume = volume;
+
+        // Lấy giọng đọc được chọn
+        const voiceSelect = document.getElementById('voiceSelect');
+        if (voiceSelect && voiceSelect.value) {
+          const voices = window.speechSynthesis.getVoices();
+          const selectedVoice = voices.find(v => v.name === voiceSelect.value);
+          if (selectedVoice) {
+            utterance.voice = selectedVoice;
+          }
+        } else {
+          // Tự tìm giọng Tiếng Việt
+          const voices = window.speechSynthesis.getVoices();
+          const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
+          if (viVoice) utterance.voice = viVoice;
+        }
+
+        utterance.onend = () => {
+          onEnded();
+        };
+
+        utterance.onerror = (e) => {
+          onError(e);
+        };
+
+        window.speechSynthesis.speak(utterance);
+      }
+
+      // 2. Phân nhánh phát âm bằng Custom API (Fetch trả về file âm thanh Blob)
+      async speakCustomApi(text, onEnded, onError) {
+        try {
+          const urlTemplate = document.getElementById('customApiUrl').value.trim();
+          const apiKey = document.getElementById('customApiKey').value.trim();
+
+          if (!urlTemplate) {
+            console.warn('Chưa cấu hình Custom API URL, tự động chuyển về Web Speech API');
+            this.speakWebSpeech(text, onEnded, onError);
+            return;
+          }
+
+          // Thay thế placeholder {text} và {key}
+          let finalUrl = urlTemplate
+            .replace('{text}', encodeURIComponent(text))
+            .replace('{key}', encodeURIComponent(apiKey));
+
+          const response = await fetch(finalUrl);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const blob = await response.blob();
+          const audioUrl = URL.createObjectURL(blob);
+          const audio = new Audio(audioUrl);
+
+          this.currentAudio = audio;
+          audio.volume = parseFloat(document.getElementById('volumeRange').value) || 1.0;
+          audio.playbackRate = parseFloat(document.getElementById('rateRange').value) || 1.0;
+
+          audio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+            this.currentAudio = null;
+            onEnded();
+          };
+
+          audio.onerror = (e) => {
+            URL.revokeObjectURL(audioUrl);
+            this.currentAudio = null;
+            onError(e);
+          };
+
+          await audio.play();
+        } catch (err) {
+          console.error('[Custom API TTS Fetch Error]', err);
+          // Fallback về Web Speech API nếu Custom API gặp lỗi
+          this.speakWebSpeech(text, onEnded, onError);
+        }
+      }
+    }
+
+    // Khởi tạo Hàng Đợi Âm Thanh
+    const audioQueue = new AudioQueue();
+
+    // Population danh sách giọng nói khả dụng từ trình duyệt
+    function populateVoices() {
+      if (!('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      const voiceSelect = document.getElementById('voiceSelect');
+      if (!voiceSelect) return;
+
+      voiceSelect.innerHTML = '';
+
+      if (voices.length === 0) {
+        const option = document.createElement('option');
+        option.textContent = 'Mặc định hệ thống';
+        voiceSelect.appendChild(option);
+        return;
+      }
+
+      // Ưu tiên đưa các giọng nói tiếng Việt lên đầu
+      const sortedVoices = [...voices].sort((a, b) => {
+        const aVi = a.lang.includes('vi') ? -1 : 1;
+        const bVi = b.lang.includes('vi') ? -1 : 1;
+        return aVi - bVi;
+      });
+
+      sortedVoices.forEach((voice) => {
+        const option = document.createElement('option');
+        option.value = voice.name;
+        const isVi = voice.lang.includes('vi') ? ' [Tiếng Việt ⭐]' : '';
+        option.textContent = `${voice.name} (${voice.lang})${isVi}`;
+        if (voice.lang.includes('vi') && !voiceSelect.value) {
+          option.selected = true;
+        }
+        voiceSelect.appendChild(option);
+      });
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = populateVoices;
+      populateVoices();
+    }
+
+    // Chuyển đổi giao diện Engine
+    function handleEngineChange() {
+      const engine = document.getElementById('ttsEngineSelect').value;
+      const webGroup = document.getElementById('webSpeechVoiceGroup');
+      const customGroup = document.getElementById('customApiGroup');
+
+      if (engine === 'custom_api') {
+        webGroup.classList.add('hidden');
+        customGroup.classList.remove('hidden');
+      } else {
+        webGroup.classList.remove('hidden');
+        customGroup.classList.add('hidden');
+      }
+    }
+
+    // Cập nhật trạng thái hiển thị Hiệu ứng khi AI Đang Đọc
+    function setSpeakerActiveState(active, item = null) {
+      const card = document.getElementById('speakerCard');
+      const glow = document.getElementById('speakerGlow');
+      const ring = document.getElementById('avatarRing');
+      const icon = document.getElementById('speakerIcon');
+      const badge = document.getElementById('speakerStateBadge');
+      const name = document.getElementById('speakerName');
+      const text = document.getElementById('speakerText');
+      const waveform = document.getElementById('waveform');
+
+      // OBS Overlay elements
+      const obsCard = document.getElementById('obsSpeechCard');
+      const obsUser = document.getElementById('obsUser');
+      const obsText = document.getElementById('obsText');
+      const obsBadge = document.getElementById('obsBadge');
+
+      if (active && item) {
+        card.classList.add('border-cyan-400', 'shadow-cyan-500/20');
+        card.classList.remove('border-[#262638]');
+        glow.classList.remove('opacity-0');
+        glow.classList.add('opacity-100');
+
+        ring.classList.add('border-cyan-400', 'shadow-lg', 'shadow-cyan-400/30', 'scale-105');
+        ring.classList.remove('border-[#32324a]');
+        icon.classList.add('text-cyan-400');
+        icon.classList.remove('text-gray-400');
+
+        badge.textContent = 'ĐANG ĐỌC...';
+        badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-400 border border-cyan-800 uppercase tracking-wider animate-pulse';
+
+        name.textContent = item.nickname || 'Người xem';
+        text.textContent = `"${item.formattedText}"`;
+        waveform.classList.remove('opacity-30');
+        waveform.classList.add('opacity-100');
+
+        // Cập nhật thẻ OBS Floating Overlay
+        if (obsCard && obsUser && obsText) {
+          obsUser.textContent = item.nickname || 'TikTok User';
+          obsText.textContent = item.formattedText;
+          if (item.type === 'chat') {
+            obsBadge.textContent = 'BÌNH LUẬN';
+            obsBadge.className = 'px-2 py-0.5 rounded text-[10px] font-extrabold bg-[#fe2c55] text-white uppercase tracking-wider';
+          } else if (item.type === 'follow') {
+            obsBadge.textContent = 'FOLLOW MỚI';
+            obsBadge.className = 'px-2 py-0.5 rounded text-[10px] font-extrabold bg-cyan-400 text-black uppercase tracking-wider';
+          } else {
+            obsBadge.textContent = 'TẶNG QUÀ';
+            obsBadge.className = 'px-2 py-0.5 rounded text-[10px] font-extrabold bg-yellow-400 text-black uppercase tracking-wider';
+          }
+
+          obsCard.classList.remove('opacity-0', 'translate-y-4');
+          obsCard.classList.add('opacity-100', 'translate-y-0');
+        }
+
+      } else {
+        card.classList.remove('border-cyan-400', 'shadow-cyan-500/20');
+        card.classList.add('border-[#262638]');
+        glow.classList.add('opacity-0');
+        glow.classList.remove('opacity-100');
+
+        ring.classList.remove('border-cyan-400', 'shadow-lg', 'shadow-cyan-400/30', 'scale-105');
+        ring.classList.add('border-[#32324a]');
+        icon.classList.remove('text-cyan-400');
+        icon.classList.add('text-gray-400');
+
+        badge.textContent = 'SẴN SÀNG';
+        badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#222232] text-gray-400 uppercase tracking-wider';
+
+        name.textContent = 'AI TTS Engine';
+        text.textContent = '"Đang chờ sự kiện mới từ livestream..."';
+        waveform.classList.add('opacity-30');
+        waveform.classList.remove('opacity-100');
+
+        if (obsCard) {
+          obsCard.classList.add('opacity-0', 'translate-y-4');
+          obsCard.classList.remove('opacity-100', 'translate-y-0');
+        }
+      }
+    }
+
+    // Kết nối TikTok Live
+    function connectTikTok() {
+      const tiktokId = document.getElementById('tiktokIdInput').value.trim();
+      if (!tiktokId) {
+        alert('Vui lòng nhập TikTok Unique ID!');
+        return;
+      }
+
+      document.getElementById('btnConnect').disabled = true;
+      socket.emit('connect-tiktok', { tiktokId });
+    }
+
+    // Ngắt kết nối TikTok Live
+    function disconnectTikTok() {
+      socket.emit('disconnect-tiktok');
+    }
+
+    // Xử lý Sự kiện Socket.io nhận về từ Backend
+    socket.on('tiktok-status', (data) => {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      const btnConn = document.getElementById('btnConnect');
+      const btnDisc = document.getElementById('btnDisconnect');
+
+      text.textContent = data.message;
+
+      if (data.status === 'connected') {
+        dot.className = 'w-3 h-3 rounded-full bg-emerald-500 shadow-md shadow-emerald-500/50 flex-shrink-0';
+        btnConn.disabled = true;
+        btnDisc.disabled = false;
+      } else if (data.status === 'connecting') {
+        dot.className = 'w-3 h-3 rounded-full bg-amber-400 animate-ping flex-shrink-0';
+      } else if (data.status === 'error') {
+        dot.className = 'w-3 h-3 rounded-full bg-red-500 flex-shrink-0';
+        btnConn.disabled = false;
+        btnDisc.disabled = true;
+      } else {
+        dot.className = 'w-3 h-3 rounded-full bg-gray-500 flex-shrink-0';
+        btnConn.disabled = false;
+        btnDisc.disabled = true;
+      }
+    });
+
+    socket.on('tiktok-event', (eventData) => {
+      // 1. Đưa sự kiện vào Hàng Đợi Âm Thanh
+      audioQueue.enqueue(eventData);
+
+      // 2. Thêm vào Luồng Sự Kiện giao diện
+      appendEventLog(eventData);
+    });
+
+    // Thêm thẻ sự kiện mới vào danh sách nhật ký
+    function appendEventLog(data) {
+      const container = document.getElementById('eventLog');
+      const placeholder = document.getElementById('emptyPlaceholder');
+
+      if (placeholder) {
+        placeholder.remove();
+      }
+
+      eventCount++;
+      document.getElementById('eventCounter').textContent = `${eventCount} sự kiện`;
+
+      const card = document.createElement('div');
+      card.className = 'p-3 rounded-xl bg-[#11111a] border border-[#222234] hover:border-[#33334d] transition flex items-start gap-3 animate-fade-in shadow-sm';
+
+      let iconBg = 'bg-tiktok-red/20 text-tiktok-red border-tiktok-red/30';
+      let tagText = 'Bình luận';
+
+      if (data.type === 'follow') {
+        iconBg = 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
+        tagText = 'Follow';
+      } else if (data.type === 'gift') {
+        iconBg = 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        tagText = 'Tặng quà';
+      }
+
+      const timeStr = new Date(data.timestamp || Date.now()).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      card.innerHTML = `
+        <div class="px-2 py-1 rounded-lg border text-[10px] font-extrabold uppercase tracking-wider ${iconBg} flex-shrink-0">
+          ${tagText}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-gray-200 truncate">${escapeHtml(data.nickname)}</span>
+            <span class="text-[10px] text-gray-500 font-mono">${timeStr}</span>
+          </div>
+          <p class="text-xs text-gray-300 mt-0.5 break-words font-medium">
+            ${escapeHtml(data.formattedText)}
+          </p>
+        </div>
+      `;
+
+      container.insertBefore(card, container.firstChild);
+
+      // Giới hạn hiển thị 100 sự kiện gần nhất trên màn hình
+      if (container.children.length > 100) {
+        container.removeChild(container.lastChild);
+      }
+    }
+
+    function clearEventLogs() {
+      const container = document.getElementById('eventLog');
+      container.innerHTML = `
+        <div id="emptyPlaceholder" class="h-full min-h-[280px] flex flex-col items-center justify-center text-center p-6 text-gray-500 border-2 border-dashed border-[#222234] rounded-xl">
+          <p class="text-sm font-medium text-gray-400">Đã xóa nhật ký sự kiện</p>
+        </div>
+      `;
+      eventCount = 0;
+      document.getElementById('eventCounter').textContent = `0 sự kiện`;
+    }
+
+    // Đọc thử nghiệm
+    function testSpeech() {
+      const sample = {
+        type: 'chat',
+        nickname: 'Chuyên Gia TikTok',
+        comment: 'Xin chào streamer, ứng dụng TTS đọc bình luận hoạt động cực kỳ mượt mà!',
+        formattedText: 'Chuyên Gia TikTok bình luận: Xin chào streamer, ứng dụng TTS đọc bình luận hoạt động cực kỳ mượt mà!'
+      };
+      audioQueue.enqueue(sample);
+      appendEventLog(sample);
+    }
+
+    // Giả lập gửi sự kiện lên Server
+    function simulateEvent(type) {
+      socket.emit('simulate-event', { type });
+    }
+
+    function simulateSpamEvents() {
+      const names = ['Tuấn Anh', 'Bảo Ngọc', 'Hoàng Nam', 'Khánh Linh', 'Quốc Huy'];
+      const comments = [
+        'Chúc livestream triệu view nha!',
+        'Streamer hát hay quá đỉnh!',
+        'Cảm ơn vì buổi chia sẻ bổ ích',
+        'Shop ơi cho mình hỏi giá áo',
+        'Đã theo dõi kênh nhé!'
+      ];
+
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+          socket.emit('simulate-event', {
+            type: i % 2 === 0 ? 'chat' : 'follow',
+            nickname: names[i],
+            text: comments[i]
+          });
+        }, i * 400);
+      }
+    }
+
+    // Chuyển đổi sang Chế độ OBS Overlay / Transparent view
+    function toggleOverlayMode() {
+      isOverlayMode = !isOverlayMode;
+      const controls = document.getElementById('panelControls');
+      const stream = document.getElementById('panelStream');
+      const overlay = document.getElementById('obsOverlayContainer');
+      const btn = document.getElementById('btnToggleOverlayMode');
+
+      if (isOverlayMode) {
+        document.body.classList.remove('bg-[#0b0b0f]');
+        document.body.classList.add('bg-transparent');
+        controls.classList.add('hidden');
+        stream.classList.add('hidden');
+        overlay.classList.remove('hidden');
+
+        btn.innerHTML = `
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+          </svg>
+          <span>Quay lại Bảng Cấu Hình</span>
+        `;
+      } else {
+        document.body.classList.add('bg-[#0b0b0f]');
+        document.body.classList.remove('bg-transparent');
+        controls.classList.remove('hidden');
+        stream.classList.remove('hidden');
+        overlay.classList.add('hidden');
+
+        btn.innerHTML = `
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+          </svg>
+          <span>Chế độ OBS Overlay</span>
+        `;
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>

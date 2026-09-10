@@ -1,0 +1,6 @@
+{
+  "name": "TikTok Live Text-to-Speech",
+  "description": "Đọc bình luận và lượt follow trên TikTok Live bằng giọng nói AI cho OBS Studio",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
